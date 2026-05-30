@@ -22,9 +22,7 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
         except Exception as exc:
-            logger.error(
-                f"[{request_id}] UNHANDLED EXCEPTION: {exc}", exc_info=True
-            )
+            logger.error(f"[{request_id}] UNHANDLED EXCEPTION: {exc}", exc_info=True)
             raise
 
         duration_ms = (time.perf_counter() - start_time) * 1000

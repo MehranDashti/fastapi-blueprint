@@ -19,8 +19,18 @@ _ERROR_MESSAGES: dict[int, str] = {
     405: "Method Not Allowed",
     409: "Conflict",
     422: "Validation Exception",
+    429: "Too Many Requests",
     500: "Unexpected Exception",
 }
+
+
+def _envelope(request: Request, code: int, message: str, error: dict) -> dict:
+    """Build the standard failure envelope, attaching the request id when present."""
+    body: dict = {"success": False, "code": code, "message": message, "error": error}
+    request_id = getattr(request.state, "request_id", None)
+    if request_id is not None:
+        body["request_id"] = request_id
+    return body
 
 
 _DOMAIN_STATUS_MAP: dict[type, int] = {
@@ -36,26 +46,15 @@ async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
     message = _ERROR_MESSAGES.get(status_code, "Something went wrong")
     return JSONResponse(
         status_code=status_code,
-        content={
-            "success": False,
-            "code": status_code,
-            "message": message,
-            "error": {"detail": exc.detail},
-        },
+        content=_envelope(request, status_code, message, {"detail": exc.detail}),
     )
 
 
 async def http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
     message = _ERROR_MESSAGES.get(exc.status_code, "Something went wrong")
-    content = {
-        "success": False,
-        "code": exc.status_code,
-        "message": message,
-        "error": {"detail": exc.detail},
-    }
     return JSONResponse(
         status_code=exc.status_code,
-        content=content,
+        content=_envelope(request, exc.status_code, message, {"detail": exc.detail}),
         headers=getattr(exc, "headers", None),
     )
 
@@ -69,22 +68,17 @@ async def validation_exception_handler(
         errors.setdefault(field, []).append(err["msg"])
     return JSONResponse(
         status_code=422,
-        content={
-            "success": False,
-            "code": 422,
-            "message": "Validation Exception",
-            "error": errors,
-        },
+        content=_envelope(request, 422, "Validation Exception", errors),
     )
 
 
 async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
     return JSONResponse(
         status_code=500,
-        content={
-            "success": False,
-            "code": 500,
-            "message": "Unexpected Exception",
-            "error": {"detail": "An unexpected error occurred."},
-        },
+        content=_envelope(
+            request,
+            500,
+            "Unexpected Exception",
+            {"detail": "An unexpected error occurred."},
+        ),
     )

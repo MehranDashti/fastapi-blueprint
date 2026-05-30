@@ -36,8 +36,10 @@ def cmd_schedule_run():
         print("No commands registered in SCHEDULE (app/commands/kernel.py).")
         return
     try:
-        from croniter import croniter
         from datetime import datetime
+
+        from croniter import croniter
+
         now = datetime.now()
         ran = 0
         for entry in SCHEDULE:
@@ -72,11 +74,15 @@ def seed_run(name: str | None = None):
     if name:
         cls = _find_seeder(name)
         if cls is None:
-            print(f"Seeder '{name}' not found. Run `python manage.py seed:list` to see available seeders.")
+            print(
+                f"Seeder '{name}' not found. "
+                "Run `python manage.py seed:list` to see available seeders."
+            )
             sys.exit(1)
         asyncio.run(cls().execute())
     else:
         from seed import run_all
+
         asyncio.run(run_all())
 
 

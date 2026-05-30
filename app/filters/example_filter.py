@@ -6,6 +6,7 @@ from app.filters.base import BaseFilter, FilterFn
 class ExampleFilter(BaseFilter):
     def filters(self) -> dict[str, FilterFn]:
         from app.models.example import Example
+
         return {
             "name": lambda q, v: q.where(Example.name.ilike(f"%{v}%")),
         }

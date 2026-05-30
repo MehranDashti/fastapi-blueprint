@@ -1,6 +1,10 @@
-from typing import List
+from pydantic import model_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from pydantic_settings import BaseSettings
+_INSECURE_SECRET_KEYS = {
+    "change-me-in-production",
+    "change-me-in-production-use-a-long-random-string-min-32-chars",
+}
 
 
 class Settings(BaseSettings):
@@ -13,10 +17,10 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
 
-    CORS_ORIGINS: List[str] = ["*"]
+    CORS_ORIGINS: list[str] = ["*"]
     CORS_ALLOW_CREDENTIALS: bool = True
-    CORS_ALLOW_METHODS: List[str] = ["*"]
-    CORS_ALLOW_HEADERS: List[str] = ["*"]
+    CORS_ALLOW_METHODS: list[str] = ["*"]
+    CORS_ALLOW_HEADERS: list[str] = ["*"]
 
     DATABASE_URL: str = "mysql+aiomysql://user:pass@localhost:3306/mydb"
 
@@ -29,14 +33,31 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Toggle the in-memory auth rate limiter (disable in tests/CI).
+    RATE_LIMIT_ENABLED: bool = True
+
     SEED_ADMIN_EMAIL: str = "admin@example.com"
     SEED_ADMIN_USERNAME: str = "admin"
     SEED_ADMIN_FULLNAME: str = "System Administrator"
     SEED_ADMIN_PASSWORD: str = "Admin1234"
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    @model_validator(mode="after")
+    def _validate_secret_key(self) -> "Settings":
+        if self.PRODUCTION and (
+            self.SECRET_KEY in _INSECURE_SECRET_KEYS or len(self.SECRET_KEY) < 32
+        ):
+            raise ValueError(
+                "SECRET_KEY must be changed from its default and be at least 32 "
+                "characters when PRODUCTION=true. Generate one with: "
+                "python3 -c 'import secrets; print(secrets.token_urlsafe(48))'"
+            )
+        return self
 
 
 settings = Settings()

@@ -15,6 +15,7 @@ class BaseCommand(ABC):
     async def run(self) -> None:
         """Bootstraps a DB session and calls handle()."""
         from app.db.session import AsyncSessionLocal
+
         async with AsyncSessionLocal() as db:
             async with db.begin():
                 await self.handle(db)

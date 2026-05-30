@@ -1,4 +1,5 @@
-from typing import Generic, List, Optional, Sequence, Type, TypeVar
+from collections.abc import Sequence
+from typing import Generic, TypeVar
 
 from fastapi import Query
 from pydantic import BaseModel
@@ -12,9 +13,7 @@ class PaginationParams:
     def __init__(
         self,
         page: int = Query(default=1, ge=1, description="Page number (1-based)"),
-        page_size: int = Query(
-            default=20, ge=1, le=100, description="Items per page (max 100)"
-        ),
+        page_size: int = Query(default=20, ge=1, le=100, description="Items per page (max 100)"),
     ):
         self.page = page
         self.page_size = page_size
@@ -38,7 +37,7 @@ class PageMeta(BaseModel):
 
 
 class Page(BaseModel, Generic[T]):
-    items: List[T]
+    items: list[T]
     meta: PageMeta
 
     @classmethod

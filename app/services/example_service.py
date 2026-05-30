@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Any
 
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import ConflictError
 from app.models.example import Example
 from app.repositories.example_repository import ExampleRepository
 from app.services.base import BaseService

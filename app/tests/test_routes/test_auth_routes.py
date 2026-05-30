@@ -1,4 +1,3 @@
-import pytest
 from httpx import AsyncClient
 
 from app.tests.factories import user_payload
@@ -30,10 +29,13 @@ async def test_signup_weak_password(client: AsyncClient):
 async def test_login_success(client: AsyncClient):
     payload = user_payload()
     await client.post("/api/v1/auth/signup", json=payload)
-    resp = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": payload["password"],
-    })
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": payload["password"],
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert "access_token" in data
@@ -43,20 +45,26 @@ async def test_login_success(client: AsyncClient):
 async def test_login_wrong_password(client: AsyncClient):
     payload = user_payload()
     await client.post("/api/v1/auth/signup", json=payload)
-    resp = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": "WrongPass1",
-    })
+    resp = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": "WrongPass1",
+        },
+    )
     assert resp.status_code == 401
 
 
 async def test_refresh_success(client: AsyncClient):
     payload = user_payload()
     await client.post("/api/v1/auth/signup", json=payload)
-    login = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": payload["password"],
-    })
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": payload["password"],
+        },
+    )
     refresh_token = login.json()["data"]["refresh_token"]
     resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": refresh_token})
     assert resp.status_code == 200
@@ -66,10 +74,13 @@ async def test_refresh_success(client: AsyncClient):
 async def test_refresh_with_access_token_rejected(client: AsyncClient):
     payload = user_payload()
     await client.post("/api/v1/auth/signup", json=payload)
-    login = await client.post("/api/v1/auth/login", json={
-        "email": payload["email"],
-        "password": payload["password"],
-    })
+    login = await client.post(
+        "/api/v1/auth/login",
+        json={
+            "email": payload["email"],
+            "password": payload["password"],
+        },
+    )
     access_token = login.json()["data"]["access_token"]
     resp = await client.post("/api/v1/auth/refresh", json={"refresh_token": access_token})
     assert resp.status_code == 401

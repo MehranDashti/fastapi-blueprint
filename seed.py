@@ -4,7 +4,11 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine  # noqa: E402
+from sqlalchemy.ext.asyncio import (  # noqa: E402
+    AsyncSession,
+    async_sessionmaker,
+    create_async_engine,
+)
 
 from app.core.config import settings  # noqa: E402
 from app.seeders.kernel import SEEDERS  # noqa: E402

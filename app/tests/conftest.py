@@ -4,8 +4,14 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from sqlalchemy.pool import StaticPool
 
 import app.models  # noqa: F401 — registers all models with Base.metadata
+from app.core.config import settings
 from app.db.session import Base, get_db
 from main import app
+
+# The in-memory rate limiter keys on client IP; the test client is always
+# 127.0.0.1, so leaving it on would throttle the suite. Exercised directly in
+# app/tests/test_core/test_rate_limit.py instead.
+settings.RATE_LIMIT_ENABLED = False
 
 TEST_DATABASE_URL = "sqlite+aiosqlite:///:memory:"
 
@@ -66,19 +72,20 @@ async def db_session() -> AsyncSession:
 
 @pytest_asyncio.fixture
 async def client() -> AsyncClient:
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 
 async def _make_auth_headers(client: AsyncClient, email: str, username: str) -> dict[str, str]:
-    await client.post("/api/v1/auth/signup", json={
-        "email": email,
-        "username": username,
-        "full_name": "Test User",
-        "password": "Password1",
-    })
+    await client.post(
+        "/api/v1/auth/signup",
+        json={
+            "email": email,
+            "username": username,
+            "full_name": "Test User",
+            "password": "Password1",
+        },
+    )
     resp = await client.post("/api/v1/auth/login", json={"email": email, "password": "Password1"})
     token = resp.json()["data"]["access_token"]
     return {"Authorization": f"Bearer {token}"}

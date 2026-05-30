@@ -6,11 +6,10 @@ from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
-from app.core.config import settings
-from app.db.session import Base
-
 # register every model with Base.metadata before autogenerate runs
 import app.models  # noqa: F401
+from app.core.config import settings
+from app.db.session import Base
 
 config = context.config
 

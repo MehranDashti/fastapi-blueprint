@@ -28,15 +28,21 @@ async def test_list_examples(client: AsyncClient, auth_headers: dict[str, str]):
 
 
 async def test_list_examples_filter_by_name(client: AsyncClient, auth_headers: dict[str, str]):
-    await client.post("/api/v1/examples", headers=auth_headers, json=example_payload(name="apple-one"))
-    await client.post("/api/v1/examples", headers=auth_headers, json=example_payload(name="banana-two"))
+    await client.post(
+        "/api/v1/examples", headers=auth_headers, json=example_payload(name="apple-one")
+    )
+    await client.post(
+        "/api/v1/examples", headers=auth_headers, json=example_payload(name="banana-two")
+    )
     resp = await client.get("/api/v1/examples?name=apple", headers=auth_headers)
     assert resp.status_code == 200
     assert resp.json()["data"]["meta"]["total"] == 1
 
 
 async def test_get_example(client: AsyncClient, auth_headers: dict[str, str]):
-    create_resp = await client.post("/api/v1/examples", headers=auth_headers, json=example_payload())
+    create_resp = await client.post(
+        "/api/v1/examples", headers=auth_headers, json=example_payload()
+    )
     example_id = create_resp.json()["data"]["id"]
     resp = await client.get(f"/api/v1/examples/{example_id}", headers=auth_headers)
     assert resp.status_code == 200
@@ -49,7 +55,9 @@ async def test_get_example_not_found(client: AsyncClient, auth_headers: dict[str
 
 
 async def test_update_example(client: AsyncClient, auth_headers: dict[str, str]):
-    create_resp = await client.post("/api/v1/examples", headers=auth_headers, json=example_payload())
+    create_resp = await client.post(
+        "/api/v1/examples", headers=auth_headers, json=example_payload()
+    )
     example_id = create_resp.json()["data"]["id"]
     resp = await client.patch(
         f"/api/v1/examples/{example_id}",
@@ -61,7 +69,9 @@ async def test_update_example(client: AsyncClient, auth_headers: dict[str, str])
 
 
 async def test_delete_example(client: AsyncClient, auth_headers: dict[str, str]):
-    create_resp = await client.post("/api/v1/examples", headers=auth_headers, json=example_payload())
+    create_resp = await client.post(
+        "/api/v1/examples", headers=auth_headers, json=example_payload()
+    )
     example_id = create_resp.json()["data"]["id"]
     resp = await client.delete(f"/api/v1/examples/{example_id}", headers=auth_headers)
     assert resp.status_code == 204

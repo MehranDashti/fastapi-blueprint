@@ -30,6 +30,7 @@ class ExampleRepository(BaseRepository[Example]):
         pagination: "PaginationParams",
     ) -> tuple[list[Example], int]:
         from app.filters.example_filter import ExampleFilter
+
         f = ExampleFilter()
         query = f.apply(select(Example), filters)
         query = f.apply_sort(query, Example, sort_by, sort_order)

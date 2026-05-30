@@ -1,5 +1,5 @@
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
-from typing import AsyncIterator
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
@@ -18,13 +18,15 @@ from app.core.exceptions import AppError
 from app.core.logging import setup_logging
 from app.core.middleware import RequestLoggingMiddleware
 from app.core.response import ok
-from app.db.session import create_tables, drop_tables
+from app.db.session import check_db, create_tables
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     setup_logging()
-    await create_tables()
+    # In production, schema is owned by Alembic migrations — don't create_all on boot.
+    if not settings.PRODUCTION:
+        await create_tables()
     yield
 
 
@@ -56,7 +58,14 @@ def create_app() -> FastAPI:
 
     @app.get("/health", tags=["Health"], include_in_schema=not settings.PRODUCTION)
     async def health():
-        return ok({"status": "ok", "version": settings.APP_VERSION})
+        db_ok = await check_db()
+        return ok(
+            {
+                "status": "ok" if db_ok else "degraded",
+                "version": settings.APP_VERSION,
+                "database": "up" if db_ok else "down",
+            }
+        )
 
     return app
 
