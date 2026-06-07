@@ -1,6 +1,6 @@
 # FastAPI Blueprint
 
-A production-ready FastAPI starter template with async SQLAlchemy, JWT auth, RBAC, pagination, filtering, seeder system, command scheduler, and full test coverage.
+A production-ready FastAPI starter template with async SQLAlchemy, JWT auth, in-memory rate limiting, pagination, filtering, seeder system, command scheduler, and full test coverage.
 
 Copy this repo to start a new project — everything is wired up. Add models, delete what you don't need.
 
@@ -29,31 +29,31 @@ Copy this repo to start a new project — everything is wired up. Add models, de
 
 | Package | What it does |
 |---------|-------------|
-| `app/core/config.py` | Pydantic-settings — reads `.env`, typed settings object |
+| `app/core/config.py` | Pydantic-settings — reads `.env`, typed settings, `SECRET_KEY` guard in production |
 | `app/core/exceptions.py` | Domain exception hierarchy (`NotFoundError`, `ConflictError`, `AuthenticationError`, `InactiveAccountError`) |
-| `app/core/exception_handler.py` | Translates domain exceptions → consistent JSON envelope |
+| `app/core/exception_handler.py` | Translates domain exceptions → consistent JSON envelope with `request_id` |
 | `app/core/response.py` | `ok()`, `created()`, `no_content()` — uniform response helpers |
 | `app/core/security.py` | JWT access + refresh tokens, bcrypt password hashing |
-| `app/core/permissions.py` | RBAC engine + FastAPI dependency factories |
-| `app/core/dependencies.py` | `get_current_user`, service dependency factories |
+| `app/core/rate_limit.py` | Zero-dependency in-memory rate limiter (fixed window, per-IP + path) |
+| `app/core/dependencies.py` | `get_current_user`, `get_current_user_optional`, service dependency factories |
 | `app/core/logging.py` | Structured console + syslog logging |
 | `app/core/middleware.py` | `RequestLoggingMiddleware` — logs every request with UUID and duration |
-| `app/db/session.py` | Async engine, session factory, `get_db` dependency |
+| `app/db/session.py` | Async engine, session factory, `get_db` dependency, `check_db()` |
 | `app/db/pagination.py` | `PaginationParams`, `Page[T]`, `paginate()` |
 | `app/filters/base.py` | `BaseFilter` — composable query-param filtering + sorting |
 
-### Domain (RBAC — users / roles / permissions)
+### Domain (example resource)
 
-The built-in domain is a complete, production-tested RBAC system. Use it as-is or as a reference when building your own domain.
+The blueprint ships one complete reference resource (`Example`) wired through every layer. Copy it when adding your own domain models, then delete it.
 
 | Layer | Files |
 |-------|-------|
-| Models | `app/models/user.py`, `role.py`, `permission.py` |
-| Repositories | `app/repositories/user_repository.py`, `role_repository.py`, `permission_repository.py` |
-| Services | `app/services/user_service.py`, `role_service.py`, `permission_service.py` |
-| Schemas | `app/schemas/admin/`, `app/schemas/client/`, `app/schemas/shared/` |
-| Routers | `app/api/v1/routers/admin/`, `app/api/v1/routers/client/` |
-| Filters | `app/filters/user_filter.py`, `role_filter.py`, `permission_filter.py` |
+| Models | `app/models/user.py`, `app/models/example.py` |
+| Repositories | `app/repositories/user_repository.py`, `app/repositories/example_repository.py` |
+| Services | `app/services/user_service.py`, `app/services/example_service.py` |
+| Schemas | `app/schemas/user.py`, `app/schemas/example.py` |
+| Filters | `app/filters/example_filter.py` |
+| Routers | `app/api/v1/routers/auth_router.py`, `app/api/v1/routers/example_router.py` |
 
 ### Supporting systems
 
@@ -104,8 +104,6 @@ cp .env.example .env        # set SECRET_KEY
 docker compose up --build   # app at http://localhost:8000
 ```
 
-Default admin credentials: `admin@example.com` / `Admin1234` (change immediately in production).
-
 ---
 
 ## Configuration
@@ -120,9 +118,55 @@ All settings live in `app/core/config.py` and are read from `.env`:
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Access token lifetime |
 | `REFRESH_TOKEN_EXPIRE_DAYS` | `7` | Refresh token lifetime |
 | `PRODUCTION` | `false` | Disables `/docs`, `/redoc`, `/health` when `true` |
+| `RATE_LIMIT_ENABLED` | `true` | Toggle in-memory rate limiter (set `false` in tests/CI) |
 | `LOG_LEVEL` | `INFO` | Logging verbosity |
 | `SEED_ADMIN_EMAIL` | `admin@example.com` | Override before first `seed.py` run |
 | `SEED_ADMIN_PASSWORD` | `Admin1234` | Override before first `seed.py` run |
+
+### SECRET_KEY guard
+
+`Settings` raises at startup if `PRODUCTION=true` and `SECRET_KEY` is a known default or shorter than 32 chars. Generate one with:
+
+```bash
+python3 -c 'import secrets; print(secrets.token_urlsafe(48))'
+```
+
+---
+
+## Authentication
+
+The blueprint includes JWT-based auth (no RBAC). Every authenticated user has equal access to protected routes.
+
+| Endpoint | Method | Auth | Notes |
+|----------|--------|------|-------|
+| `/api/v1/auth/signup` | POST | Public | rate-limited 5 req/60 s |
+| `/api/v1/auth/login` | POST | Public | rate-limited 10 req/60 s |
+| `/api/v1/auth/refresh` | POST | Public | |
+| `/api/v1/auth/logout` | POST | Authenticated | client-side token discard |
+| `/api/v1/auth/profile` | GET | Authenticated | |
+| `/api/v1/auth/profile` | PATCH | Authenticated | |
+
+Logout is client-side only (token discard) — there is no server-side blacklist. Use Redis for true server-side revocation.
+
+**To add RBAC:** add a `Role`/`Permission` model, a `require_permission(...)` dependency, and register permission names in a seeder.
+
+---
+
+## Rate Limiting
+
+A zero-dependency, in-memory `RateLimiter` (fixed window keyed by client IP + path). No Redis or `slowapi` required.
+
+```python
+from fastapi import Depends
+from app.core.rate_limit import RateLimiter
+
+login_limiter = RateLimiter(times=10, seconds=60)
+
+@router.post("/login", dependencies=[Depends(login_limiter)])
+async def login(...): ...
+```
+
+Exceeding the limit raises `429` with a `Retry-After` header. Toggle with `RATE_LIMIT_ENABLED=false` in tests/CI. For multi-worker deployments, back the store with Redis.
 
 ---
 
@@ -133,8 +177,9 @@ Every response uses the same JSON envelope:
 ```json
 { "success": true,  "code": 200, "message": "Ok",      "data":  { ... } }
 { "success": true,  "code": 201, "message": "Created",  "data":  { ... } }
-{ "success": false, "code": 404, "message": "Not Found","error": { "detail": "..." } }
+{ "success": false, "code": 404, "message": "Not Found","error": { "detail": "..." }, "request_id": "..." }
 { "success": false, "code": 422, "message": "Validation Exception", "error": { "field": ["msg"] } }
+{ "success": false, "code": 429, "message": "Too Many Requests", "error": { "detail": "..." } }
 ```
 
 Use the helpers in every route — never return raw dicts or Pydantic models:
@@ -149,43 +194,9 @@ return no_content()
 
 ---
 
-## RBAC
-
-A user holds a permission if any of their assigned **roles** has it, or it is **directly assigned** to the user.
-
-### Protecting routes
-
-```python
-from app.core.permissions import require_permission, require_any_permission
-
-@router.get("/items", dependencies=[Depends(require_permission("items.read"))])
-@router.delete("/items/{id}", dependencies=[Depends(require_any_permission("items.delete", "admin.all"))])
-```
-
-### Checking inside a handler
-
-```python
-from app.core.permissions import can
-
-async def my_handler(user: User = Depends(get_current_user)):
-    if not can(user, "orders.refund"):
-        raise PermissionDeniedError()
-```
-
-### Permission helpers
-
-```python
-get_all_permissions(user)        # → set[str]
-can(user, "perm")                # bool
-can_any(user, "p1", "p2")       # bool — OR
-can_all(user, "p1", "p2")       # bool — AND
-has_role(user, "name")           # bool
-has_any_role(user, "a", "b")    # bool
-```
-
----
-
 ## Adding a New Domain Resource
+
+Mirror the `Example` resource end-to-end:
 
 1. **Model** — `app/models/your_model.py`, register in `app/models/__init__.py`
 2. **Migration** — `alembic revision --autogenerate -m "add your_model"`, then `alembic upgrade head`
@@ -196,7 +207,8 @@ has_any_role(user, "a", "b")    # bool
 7. **Router** — `app/api/v1/routers/your_router.py`, include in `app/api/v1/router/__init__.py`
 8. **Dependency** — add `get_your_service()` to `app/core/dependencies.py`
 9. **Tests** — factories + test files under `app/tests/`
-10. **Permissions** — add new permission names to `app/seeders/permission_seeder.py` and re-run `seed.py`
+
+Run `make check` (ruff + mypy + pytest) before committing.
 
 ---
 
@@ -207,7 +219,7 @@ Seeders live in `app/seeders/`. Each is a class; run all at once or one at a tim
 ```bash
 python manage.py seed:list         # list registered seeders
 python manage.py seed:run          # run all seeders (atomic transaction)
-python manage.py seed:run users    # run a single seeder by name
+python manage.py seed:run examples # run a single seeder by name
 ```
 
 ### Creating a seeder
@@ -250,35 +262,43 @@ OS cron entry (runs every minute, Laravel-style):
 
 ## Tests
 
-Tests use in-memory SQLite — no MySQL, no `.env`, no Docker required.
+38 tests, all passing. Tests use in-memory SQLite — no MySQL, no `.env`, no Docker required.
 
 ```bash
-venv/bin/pytest              # all tests
-venv/bin/pytest -v           # verbose
-venv/bin/pytest --tb=short   # short tracebacks
+make test                # all tests
+pytest -v                # verbose
+pytest --tb=short        # short tracebacks
+make check               # ruff + mypy + pytest (CI parity)
 ```
 
 ### Test structure
 
 ```
 app/tests/
-├── conftest.py                    # DB engine, fixtures, admin_headers, user_headers
+├── conftest.py                    # DB engine, fixtures, auth_headers, user_headers
 ├── factories/                     # Faker + uuid4 data factories (make_*, *_payload)
-├── test_repositories/             # Repository layer tests
-├── test_services/                 # Service layer tests
-├── client/                        # Auth route tests
-└── admin/                         # Admin route tests
+│   ├── user_factory.py
+│   └── example_factory.py
+├── test_core/
+│   └── test_rate_limit.py         # RateLimiter unit tests (3)
+├── test_repositories/
+│   └── test_example_repository.py # Repository layer tests (6)
+├── test_services/
+│   └── test_example_service.py    # Service layer tests (7)
+└── test_routes/
+    ├── test_auth_routes.py        # Auth endpoint tests (13)
+    └── test_example_routes.py     # Example endpoint tests (9)
 ```
 
 ### Factory pattern
 
 ```python
 # DB fixture — persists to in-memory SQLite
-perm = await make_permission(db_session)
-role = await make_role(db_session, name="editor")
+example = await make_example(db_session)
+example = await make_example(db_session, name="pinned")
 
 # HTTP payload dict — for route tests
-resp = await client.post("/api/v1/admin/permissions", headers=admin_headers, json=permission_payload())
+resp = await client.post("/api/v1/examples", headers=auth_headers, json=example_payload())
 ```
 
 ---
@@ -295,12 +315,6 @@ docker compose down -v          # stop, wipe data
 docker compose exec app python manage.py seed:list
 ```
 
-For live reload during development, uncomment the volume mount in `docker-compose.yml`:
-```yaml
-volumes:
-  - ./app:/app/app
-```
-
 ---
 
 ## Project Structure
@@ -309,13 +323,13 @@ volumes:
 fastapi-blueprint/
 ├── app/
 │   ├── api/v1/
-│   │   ├── router/          # Top-level aggregated router
+│   │   ├── router/          # Aggregated api_router (prefix /api/v1)
 │   │   └── routers/
-│   │       ├── client/      # Auth / public routes
-│   │       └── admin/       # Admin routes (permission-gated)
+│   │       ├── auth_router.py
+│   │       └── example_router.py
 │   ├── commands/            # Scheduler commands (BaseCommand)
 │   ├── seeders/             # DB seeders (BaseSeeder)
-│   ├── core/                # Config, exceptions, auth, RBAC, logging, response helpers
+│   ├── core/                # Config, exceptions, auth, rate limiting, logging, response helpers
 │   ├── db/                  # Session, Base, pagination
 │   ├── filters/             # BaseFilter + per-resource FilterParams
 │   ├── models/              # SQLAlchemy ORM models
@@ -327,12 +341,14 @@ fastapi-blueprint/
 ├── docker/
 │   ├── Dockerfile           # Production image (cache-optimised, non-root)
 │   └── entrypoint.sh        # migrate → seed → start
-├── main.py                  # App factory
+├── main.py                  # App factory, lifespan, middleware, /health
 ├── run.py                   # Uvicorn entry point
 ├── manage.py                # Commands + seeders CLI
 ├── seed.py                  # Thin seeder runner
 ├── docker-compose.yml
+├── Makefile                 # install / dev / test / lint / format / typecheck / check / run
 ├── alembic.ini
+├── pyproject.toml           # ruff, mypy, pytest config
 ├── pytest.ini
 ├── requirements.txt         # Production deps
 ├── requirements-dev.txt     # Dev/test deps
